@@ -35,8 +35,8 @@ class ImgLabelPair(Dataset):
         return img, label
 
 def get_meanstd(dataset):
+    # Make sure dataset is transformed to tensor first
     # ONLY USE ON SMALL DATASET <100,000 imgs, TAKES LONG TIME
-    # 1st return value of of dataset must be image
     ln = len(dataset)
     sz = dataset[0][0].size()
     print "Loading dataset into tensor"

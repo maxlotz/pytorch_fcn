@@ -1,5 +1,6 @@
 from DatasetLoaders import ImgLabelPair
 from Models import AlexNet
+from Utils import make_graph
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,11 +14,12 @@ train_file = '/home/maxlotz/Thesis/file_lists/rgb_train_1.txt'
 test_file = '/home/maxlotz/Thesis/file_lists/rgb_test_1.txt'
 class_file = '/home/maxlotz/Thesis/file_lists/classes.txt'
 save_path = '/BigDrive/maxlotz/pytorch_models/'
-log_path = '/home/maxlotz/Thesis/logs_pytorch/Alexnet_rgb.txt'
+log_path = '/home/maxlotz/Thesis/Logs_pytorch/Alexnet_rgb.csv'
+graph_path = '/home/maxlotz/Thesis/Figs_pytorch/Alexnet_rgb.png'
 
-train_batches = 256
-test_batches = 10
-disp_batches = 20 # number of batches to display loss after
+train_batches = 64
+test_batches = 64
+disp_batches = 10 # number of batches to display loss after
 
 rgb_mean = [0.14735279922924333, 0.131836718919208, 0.11958479305748611]
 rgb_std = [0.2428308948828459, 0.22527291067069058, 0.22105494379177684]
@@ -64,7 +66,7 @@ def train(epoch):
             avg_loss = running_loss / disp_batches
             print '[{}, {}] loss: {:.4f}'.format(epoch + 1, batch_idx + 1, avg_loss)
             with open(log_path, 'a') as f:
-                f.write('{}\t{}\t{:.4f}\t-\ttrain\n'.format(epoch, batch_idx + 1, avg_loss, 0))
+                f.write('{},{},{:.4f},{},{}\n'.format(epoch, batch_idx + 1, avg_loss, 0, 0))
             running_loss = 0.0
 
 # Test model and print test loss and accuracy
@@ -84,7 +86,7 @@ def test(epoch):
     print 'Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.4f}%)'.format(
         test_loss.data[0], correct, len(test_loader.dataset), accuracy)
     with open(log_path, 'a') as f:
-        f.write('{}\t-\t{:.4f}\t{:.4f}\ttest\n'.format(epoch, test_loss.data[0], accuracy))
+        f.write('{},{},{:.4f},{:.4f},{}\n'.format(epoch, 0, test_loss.data[0], accuracy, 1))
 
 if use_gpu:
 	model.cuda()
@@ -93,10 +95,12 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
 with open(log_path, 'w') as f:
-    f.write('epoch\tbatch\tloss\taccuracy\tset\n')
+    f.write('epoch,batch,loss,accuracy,set\n')
 
-for epoch in range(2):
+for epoch in range(20):
     train(epoch)
     test(epoch+1)
     model_dict = model.state_dict()
     torch.save(model_dict, save_path + 'Alexnet_rgb_' + str(epoch) + '.pth')
+
+make_graph(log_path, graph_path)
