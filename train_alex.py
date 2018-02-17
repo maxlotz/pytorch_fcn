@@ -1,4 +1,4 @@
-from DatasetLoaders import ImgLabelPair
+from DatasetLoaders import Img_LabelInt_Pair
 from Models import AlexNet
 from Utils import make_graph
 import torch
@@ -26,14 +26,6 @@ rgb_std = [0.2428308948828459, 0.22527291067069058, 0.22105494379177684]
 
 use_gpu = torch.cuda.is_available()
 
-# Initialise model and copy over pretrained weights with same size
-model = AlexNet(num_classes=51)
-model_dict = model.state_dict()
-weights_dict = model_zoo.load_url(weights_url)
-new_dict = {k: v for k, v in weights_dict.items() if k not in ['classifier.6.weight', 'classifier.6.bias']}
-model_dict.update(new_dict)
-model.load_state_dict(model_dict)
-
 # Create transforms, crop, convert to torch tensor then normalise
 transform = transforms.Compose(
     [transforms.RandomResizedCrop(227),
@@ -41,12 +33,20 @@ transform = transforms.Compose(
      transforms.Normalize(rgb_mean, rgb_std)])
 
 # Create train and test dataloaders
-train_set = ImgLabelPair(train_file, transform)
+train_set = Img_LabelInt_Pair(train_file, transform)
 train_loader = DataLoader(train_set, batch_size=train_batches,
                                           shuffle=True, num_workers=4)
-test_set = ImgLabelPair(test_file, transform)
+test_set = Img_LabelInt_Pair(test_file, transform)
 test_loader = DataLoader(test_set, batch_size=test_batches,
                                           shuffle=True, num_workers=4)
+
+# Initialise model and copy over pretrained weights with same size
+model = AlexNet(num_classes=51)
+model_dict = model.state_dict()
+weights_dict = model_zoo.load_url(weights_url)
+new_dict = {k: v for k, v in weights_dict.items() if k not in ['classifier.6.weight', 'classifier.6.bias']}
+model_dict.update(new_dict)
+model.load_state_dict(model_dict)
 
 # Train model and print training loss
 def train(epoch):
@@ -97,10 +97,11 @@ optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 with open(log_path, 'w') as f:
     f.write('epoch,batch,loss,accuracy,set\n')
 
-for epoch in range(20):
+'''
+for epoch in range(2):
     train(epoch)
     test(epoch+1)
     model_dict = model.state_dict()
     torch.save(model_dict, save_path + 'Alexnet_rgb_' + str(epoch) + '.pth')
+'''
 
-make_graph(log_path, graph_path)
