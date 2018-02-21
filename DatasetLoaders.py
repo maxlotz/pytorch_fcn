@@ -102,8 +102,9 @@ class VOCClassSegBase(Dataset):
         # load label
         lbl_file = data_file['lbl']
         lbl = Image.open(lbl_file)
-        lbl = np.array(lbl, dtype=np.int32)
+        # note resize gives type uint8
         lbl = misc.imresize(lbl, self.resize_size, interp='nearest')
+        lbl = lbl.astype(np.int32)
         #lbl[lbl == 255] = -1
         if self._transform:
             return self.transform(img, lbl)
@@ -114,11 +115,9 @@ class VOCClassSegBase(Dataset):
         img = img[:, :, ::-1]  # RGB -> BGR
         img = img.astype(np.float64)
         img -= self.mean_bgr
-        #img = cv2.resize(img, dsize=(256,256), interpolation=cv2.INTER_CUBIC)
         img = img.transpose(2, 0, 1)
         img = torch.from_numpy(img).float()
         
-        #lbl = cv2.resize(lbl, dsize=(256,256), interpolation=cv2.INTER_NEAREST)
         lbl = torch.from_numpy(lbl).long()
         
         return img, lbl
