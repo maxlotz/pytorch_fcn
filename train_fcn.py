@@ -1,6 +1,7 @@
 from DatasetLoaders import VOCClassSegBase
 from Models import FCN16s
 from Utils import make_graph
+from Metrics import iou
 
 import torch
 import torch.nn as nn
@@ -26,9 +27,13 @@ graph_path = '/home/maxlotz/Thesis/Figs_pytorch/fcn16_rgb.png'
 testimg = '/BigDrive/maxlotz/datasets/VOCPascal/VOCdevkit/VOC2012/JPEGImages/2007_000033.jpg'
 testlbl = '/BigDrive/maxlotz/datasets/VOCPascal/VOCdevkit/VOC2012/SegmentationClass/2007_000033.png'
 
-train_batches = 1
+train_batches = 2
 val_batches = 1
 disp_batches = 10 # number of batches to display loss after
+
+momentum = 0.99
+lr = 1.0e-6
+weight_decay = 0.0005
 
 use_gpu = torch.cuda.is_available()
 use_gpu = False
@@ -39,44 +44,71 @@ train_loader = DataLoader(train_set, batch_size=train_batches,
                                           shuffle=True, num_workers=4)
 val_set = VOCClassSegBase(VOC_root, 'val', True)
 val_loader = DataLoader(val_set, batch_size=val_batches,
-                                          shuffle=False, num_workers=4)
+                                          shuffle=True, num_workers=4)
 
 model = FCN16s()
 model.load_state_dict(torch.load(fcn16_torch_path))
 
 if use_gpu:
-	model.cuda()
-a = iter(val_loader)
-data, target = a.next()
-
-if use_gpu:
-    data, target = data.cuda(), target.cuda()
-data, target = Variable(data), Variable(target)
-out = model(data)
+    model.cuda()
 
 criterion = nn.NLLLoss(ignore_index=255)
-log_p = F.log_softmax(out, dim=1)
-loss = criterion(log_p, target) # gives same result as Kentaro's manual method
-print loss.data[0]
+optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
 
 
+def train(epoch):
+    model.train()
+    running_loss = 0.0
+    for batch_idx, (data, target) in enumerate(train_loader):
+        if use_gpu:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        optimizer.zero_grad()
+        output = model(data)
+        log_p = F.log_softmax(output, dim=1)
+        loss = criterion(log_p, target)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.data[0]
+        if batch_idx % disp_batches == disp_batches-1:
+            avg_loss = running_loss / disp_batches
+            print '[{}, {}] loss: {:.4f}'.format(epoch + 1, batch_idx + 1, avg_loss)
+            with open(log_path, 'a') as f:
+                f.write('{},{},{:.4f},{},{}\n'.format(epoch, batch_idx + 1, avg_loss, 0, 0))
+            running_loss = 0.0
 
+def test(epoch, num_classes=21):
+    model.eval()
+    test_loss, correct = 0, 0
+    intersection, union, ious = np.zeros(num_classes, dtype=np.int32), np.zeros(num_classes, dtype=np.int32), np.zeros(num_classes)
+    for data, target in val_loader:
+        if use_gpu:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        output = model(data)
+        log_p = F.log_softmax(output, dim=1)
+        test_loss += criterion(output, target)
+        pred = output.data.max(1)[1] # get the index of the max log-probability
+        intersection_, union_ = iou(pred, target, 21, 255)
+        intersection += intersection_
+        union += union_
+        print intersection
+        print union
+    for un, inter, (idx, iou_) in zip(union, intersection, enumerate(ious)):
+        if un == 0.:
+            ious[idx] = float('nan')
+        else:
+            ious[idx] = float(inter)/float(max(un, 1))
+    notnan = ious[np.logical_not(np.isnan(ious))]
+    mean_ious = notnan/len(notnan)
+    print mean_ious
+
+
+test(0)
 '''
-vgg16_weight_dict = np.load(vgg16_npy_path, encoding='latin1').item()
-
-for k, v in vgg16_weight_dict.items():
-	if 'conv' in k:
-		resized = np.moveaxis(v[0],(0,1,2,3),(2,3,1,0))
-		print '{}\t{}'.format(k, resized.shape)
-	elif 'fc6' in k:
-		resized = np.moveaxis(np.reshape(v[0],(7,7,512,4096)),(0,1,2,3),(2,3,1,0))
-		print '{}\t{}'.format(k, resized.shape)
-	elif 'fc7' in k:
-		resized = np.moveaxis(np.reshape(v[0],(1,1,4096,4096)),(0,1,2,3),(2,3,1,0))
-		print '{}\t{}'.format(k, resized.shape)
-	else:
-		print '{}\t{}'.format(k, v[0].shape)
-
-for name, param in model.named_parameters():
-    print '{}\t{}'.format(name, param.size())
+pred = output.data.max(1)[1]
+accuracy = 100.*(pred == target.data).sum()/np.prod(pred.shape)
+    print ious
+    notnan = ious[np.logical_not(np.isnan(ious))]
+    print notnan
 '''

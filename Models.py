@@ -1,5 +1,8 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+from math import ceil
 
 class AlexNet(nn.Module):
 
@@ -145,3 +148,20 @@ class FCN16s(nn.Module):
         h = h[:, :, 27:27 + x.size()[2], 27:27 + x.size()[3]].contiguous()
         
         return h
+
+    def UpscaleBilinear(self, m):
+        name = m.__class__.__name__
+        if name in 'ConvTranspose2d':
+            height = m.weight.shape[2]
+            width = m.weight.shape[3]
+            f = ceil(width/2.0)
+            c = (2 * f - 1 - f % 2) / (2.0 * f)
+            bilinear = np.zeros((m.weight.shape[3], m.weight.shape[2]))
+            for x in range(width):
+                for y in range(height):
+                    value = (1 - abs(x / f - c)) * (1 - abs(y / f - c))
+                    bilinear[x, y] = value
+            weights = np.zeros(m.weight.shape)
+            for i in range(m.weight.shape[0]):
+                weights[i, i, :, :] = bilinear
+            m.weight.data = torch.from_numpy(weights)
