@@ -1,7 +1,7 @@
 from DatasetLoaders import VOCClassSegBase
 from Models import FCN16s
 from Utils import make_graph
-from Metrics import iou
+from Metrics import IOU, seg_Accuracy, Conf_Mat
 
 import torch
 import torch.nn as nn
@@ -17,26 +17,32 @@ import matplotlib.pyplot as plt
 import scipy.misc as misc
 
 
-vgg16_npy_path = '/BigDrive/maxlotz/pytorch_models/vgg16.npy'
 fcn16_torch_path = '/BigDrive/maxlotz/pytorch_models/fcn16s_from_caffe.pth' 
 VOC_root = '/BigDrive/maxlotz/datasets/'
 save_path = '/BigDrive/maxlotz/pytorch_models/'
-log_path = '/home/maxlotz/Thesis/Logs_pytorch/fcn16_rgb.csv'
-graph_path = '/home/maxlotz/Thesis/Figs_pytorch/fcn16_rgb.png'
 
-testimg = '/BigDrive/maxlotz/datasets/VOCPascal/VOCdevkit/VOC2012/JPEGImages/2007_000033.jpg'
-testlbl = '/BigDrive/maxlotz/datasets/VOCPascal/VOCdevkit/VOC2012/SegmentationClass/2007_000033.png'
+model_name = 'VOC_TEST'
+log_root = '/home/maxlotz/Thesis/Logs_pytorch/'
+graph_path = '/home/maxlotz/Thesis/Figs_pytorch/'
 
-train_batches = 2
+VOC_CLASSES = ['background',
+'aeroplane', 'bicycle', 'bird', 'boat',
+'bottle', 'bus', 'car', 'cat', 'chair',
+'cow', 'diningtable', 'dog', 'horse',
+'motorbike', 'person', 'pottedplant',
+'sheep', 'sofa', 'train', 'tvmonitor']
+
+train_iters = 20
+train_batches = 1
 val_batches = 1
 disp_batches = 10 # number of batches to display loss after
 
 momentum = 0.99
-lr = 1.0e-6
+lr = 1.0e-12
 weight_decay = 0.0005
 
 use_gpu = torch.cuda.is_available()
-use_gpu = False
+#use_gpu = False
 
 # Create train and test dataloaders
 train_set = VOCClassSegBase(VOC_root, 'train', True)
@@ -57,6 +63,7 @@ optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay
 
 
 def train(epoch):
+    print "Training"
     model.train()
     running_loss = 0.0
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -72,43 +79,56 @@ def train(epoch):
         running_loss += loss.data[0]
         if batch_idx % disp_batches == disp_batches-1:
             avg_loss = running_loss / disp_batches
-            print '[{}, {}] loss: {:.4f}'.format(epoch + 1, batch_idx + 1, avg_loss)
-            with open(log_path, 'a') as f:
-                f.write('{},{},{:.4f},{},{}\n'.format(epoch, batch_idx + 1, avg_loss, 0, 0))
             running_loss = 0.0
+            print '[{}, {}] loss: {:.4f}'.format(epoch + 1, batch_idx + 1, avg_loss)
+            with open(log_root + model_name + '.csv', 'a') as f:
+                f.write('{},{},{},{:.4f},{},{}\n'.format(0,epoch, batch_idx + 1, avg_loss, 0, 0))
+            running_loss = 0.0
+    print "\n"
 
-def test(epoch, num_classes=21):
+def test(epoch):
+    print "Testing"
     model.eval()
-    test_loss, correct = 0, 0
-    intersection, union, ious = np.zeros(num_classes, dtype=np.int32), np.zeros(num_classes, dtype=np.int32), np.zeros(num_classes)
-    for data, target in val_loader:
+    running_loss = 0.0
+    batch_IOU, batch_acc = IOU(), seg_Accuracy()
+    epoch_IOU, epoch_acc = IOU(), seg_Accuracy()
+    if epoch == train_iters:
+        confusion = Conf_Mat(classes=VOC_CLASSES)
+    for batch_idx, (data, target) in enumerate(val_loader):
         if use_gpu:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         output = model(data)
         log_p = F.log_softmax(output, dim=1)
-        test_loss += criterion(output, target)
+        loss = criterion(log_p, target)
         pred = output.data.max(1)[1] # get the index of the max log-probability
-        intersection_, union_ = iou(pred, target, 21, 255)
-        intersection += intersection_
-        union += union_
-        print intersection
-        print union
-    for un, inter, (idx, iou_) in zip(union, intersection, enumerate(ious)):
-        if un == 0.:
-            ious[idx] = float('nan')
-        else:
-            ious[idx] = float(inter)/float(max(un, 1))
-    notnan = ious[np.logical_not(np.isnan(ious))]
-    mean_ious = notnan/len(notnan)
-    print mean_ious
+        running_loss += loss.data[0]
+        batch_IOU.add(pred, target)
+        batch_acc.add(pred, target)
+        epoch_IOU.add(pred, target)
+        epoch_acc.add(pred, target)
+        if epoch == train_iters:
+            confusion.add(pred, target)
+        if batch_idx % disp_batches == disp_batches-1:
+            batch_mean_iou = batch_IOU.get_mean_iou()
+            batch_acc = batch_acc.get_accuracy()
+            avg_loss = running_loss / disp_batches
+            running_loss = 0.0
+            print '[{}, {}] loss: {:.4f}\t IOU: {:.4f}\t Acc: {:.4f}'.format(epoch + 1, batch_idx + 1, avg_loss, batch_mean_iou, batch_acc)
+            batch_IOU, batch_acc = IOU(), seg_Accuracy()
+    epoch_mean_iou = epoch_IOU.get_mean_iou()
+    epoch_acc = epoch_acc.get_accuracy()
+    with open(log_root + model_name + '.csv', 'a') as f:
+        f.write('{},{},{},{:.4f},{:.4f},{:.4f}\n'.format(1, epoch, 0, avg_loss, epoch_acc, epoch_mean_iou))
+    if epoch == train_iters:
+        confusion.save(VOC_CLASSES, model_name)
+        make_graph(log_root + model_name, graph_path + model_name)
+    print "\n"
 
+with open(log_root + model_name + '.csv', 'w') as f:
+    f.write('set,epoch,batch,loss,accuracy,iou\n')
 
 test(0)
-'''
-pred = output.data.max(1)[1]
-accuracy = 100.*(pred == target.data).sum()/np.prod(pred.shape)
-    print ious
-    notnan = ious[np.logical_not(np.isnan(ious))]
-    print notnan
-'''
+for epoch in xrange(train_iters):
+    train(epoch)
+    test(epoch+1)

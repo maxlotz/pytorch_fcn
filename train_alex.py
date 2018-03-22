@@ -14,7 +14,7 @@ train_file = '/home/maxlotz/Thesis/file_lists/rgb_train_1.txt'
 test_file = '/home/maxlotz/Thesis/file_lists/rgb_test_1.txt'
 class_file = '/home/maxlotz/Thesis/file_lists/classes.txt'
 save_path = '/BigDrive/maxlotz/pytorch_models/'
-log_path = '/home/maxlotz/Thesis/Logs_pytorch/Alexnet_rgb.csv'
+log_path = '/home/maxlotz/Thesis/Logs_pytorch/VOC_TEST.csv'
 graph_path = '/home/maxlotz/Thesis/Figs_pytorch/Alexnet_rgb.png'
 
 train_batches = 64
