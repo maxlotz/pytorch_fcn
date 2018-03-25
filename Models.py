@@ -164,4 +164,4 @@ class FCN16s(nn.Module):
             weights = np.zeros(m.weight.shape)
             for i in range(m.weight.shape[0]):
                 weights[i, i, :, :] = bilinear
-            m.weight.data = torch.from_numpy(weights)
+            m.weight.data = torch.from_numpy(weights).float()

@@ -80,7 +80,7 @@ class Conf_Mat():
         uniq, uniq_counts = np.unique(data, return_counts=True, axis=1)
         self.confusion[uniq[0,:],uniq[1,:]] += uniq_counts
 
-    def save(self, class_list, save_path):
+    def save(self, save_path):
         #create figure
         normalized = self.confusion/self.confusion.astype(np.float).sum(axis=1)[:, np.newaxis]
         plt.imshow(normalized, cmap=plt.cm.Blues)
@@ -109,5 +109,27 @@ class Conf_Mat():
         csvdata = np.hstack([csvdata,precision[None].T])
 
         #saves as csv file
-        df = pd.DataFrame(csvdata, index=class_list + ['Actual Total','Recall'], columns=class_list + ['Predicted Total','Precision'])
+        df = pd.DataFrame(csvdata, index=self.classes + ['Actual Total','Recall'], columns=self.classes + ['Predicted Total','Precision'])
         df.to_csv(self.conf_path + save_path + '.csv')
+
+def get_stats(dataset, n_classes):
+    # set dataset param subtarct_mean to False first
+    # ONLY USE ON SMALL DATASET <100,000 imgs, TAKES LONG TIME
+    # returns mean and std of dataset as well as class frequency
+    ln = len(dataset)
+    sz = dataset[0][0].size()
+    print "Loading dataset into tensor"
+    print "-"*10
+    tensor = torch.FloatTensor(ln, sz[0], sz[1], sz[2]).zero_()
+    for idx, data in enumerate(dataset):
+        if (idx % 100) == 0:
+            print "loading image {} of {}".format(idx, ln)
+        tensor[idx,:,:,:] = data[0]
+        #for i in xrange(n_classes):
+
+    print "-"*10
+    print "Dataset loaded into tensor"
+    B, G, R = tensor[:,0,:,:], tensor[:,1,:,:], tensor[:,2,:,:]
+    mean = [B.mean(), G.mean(), R.mean()]
+    std = [B.std(), G.std(), R.std()]
+    return mean, std

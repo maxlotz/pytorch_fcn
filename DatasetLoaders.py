@@ -64,11 +64,12 @@ class VOCClassSegBase(Dataset):
     ])
     mean_bgr = np.array([104.00698793, 116.66876762, 122.67891434])
 
-    def __init__(self, root, split='train', transform=False):
+    def __init__(self, root, split='train', transform=False, subtract_mean=True):
         self.root = root
         self.split = split
         self._transform = transform
         self.resize_size = (256, 256)
+        self.subtract_mean = subtract_mean
 
         # VOC2011 and others are subset of VOC2012
         dataset_dir = osp.join(self.root, 'VOCPascal/VOCdevkit/VOC2012')
@@ -102,6 +103,7 @@ class VOCClassSegBase(Dataset):
         # load label
         lbl_file = data_file['lbl']
         lbl = Image.open(lbl_file)
+        lbl_ = np.array(lbl)
         # note resize gives type uint8
         lbl = misc.imresize(lbl, self.resize_size, interp='nearest')
         lbl = lbl.astype(np.int32)
@@ -114,13 +116,15 @@ class VOCClassSegBase(Dataset):
     def transform(self, img, lbl):
         img = img[:, :, ::-1]  # RGB -> BGR
         img = img.astype(np.float64)
-        img -= self.mean_bgr
+        if self.subtract_mean:
+            img -= self.mean_bgr
         img = img.transpose(2, 0, 1)
         img = torch.from_numpy(img).float()
         
         lbl = torch.from_numpy(lbl).long()
         
         return img, lbl
+
 
     def untransform(self, img, lbl):
         img = img.numpy()
@@ -131,22 +135,74 @@ class VOCClassSegBase(Dataset):
         lbl = lbl.numpy()
         return img, lbl
 
+class NYUV2Seg(VOCClassSegBase):
+    class_names = [
+        'wall',
+        'floor',
+        'cabinet',
+        'bed',
+        'chair',
+        'sofa',
+        'table',
+        'door',
+        'window',
+        'bookshelf',
+        'picture',
+        'counter',
+        'blinds',
+        'desk',
+        'shelves',
+        'curtain',
+        'dresser',
+        'pillow',
+        'mirror',
+        'floor mat',
+        'clothes',
+        'ceiling',
+        'books',
+        'refridgerator',
+        'television',
+        'paper',
+        'towel',
+        'shower curtain',
+        'box',
+        'whiteboard',
+        'person',
+        'night stand',
+        'toilet',
+        'sink',
+        'lamp',
+        'bathtub',
+        'bag',
+        'otherstructure',
+        'otherfurniture',
+        'otherprop',
+    ]
 
-def get_meanstd(dataset):
-    # Make sure dataset is transformed to tensor first
-    # ONLY USE ON SMALL DATASET <100,000 imgs, TAKES LONG TIME
-    ln = len(dataset)
-    sz = dataset[0][0].size()
-    print "Loading dataset into tensor"
-    print "-"*10
-    tensor = torch.FloatTensor(ln, sz[0], sz[1], sz[2]).zero_()
-    for idx, data in enumerate(dataset):
-        if (idx % 100) == 0:
-            print "loading image {} of {}".format(idx, ln)
-        tensor[idx,:,:,:] = data[0]
-    print "-"*10
-    print "Dataset loaded into tensor"
-    R, G, B = tensor[:,0,:,:], tensor[:,1,:,:], tensor[:,2,:,:]
-    mean = [R.mean(), G.mean(), B.mean()]
-    std = [R.std(), G.std(), B.std()]
-    return mean, std
+    #mean_bgr = np.array([104.00698793, 116.66876762, 122.67891434])
+
+    def __init__(self, imgroot, lblroot, idx, split, transform, subtract_mean):
+        self.imgroot = imgroot
+        self.lblroot = lblroot
+        self.idx = idx
+        self.split = split
+        self.files = {}
+        self._transform = transform
+        self.resize_size = (256, 256)
+        self.subtract_mean = subtract_mean
+
+        if self.idx > 9:
+            print "error"
+
+        self.files['train'], self.files['val'] = [], []
+        for i in xrange(1449):
+            if (i+1+self.idx) % 10 == 0:
+                self.files['val'].append({
+                    'img' : self.imgroot + str(i+1) + '.png',
+                    'lbl' : self.lblroot + str(i+1) + '.png',
+                    })
+            else:
+                self.files['train'].append({
+                    'img' : self.imgroot + str(i+1) + '.png',
+                    'lbl' : self.lblroot + str(i+1) + '.png',
+                    })
